@@ -57,22 +57,37 @@ public:
   double std_radrd_ ;
 
   ///* Weights of sigma points
-  VectorXd weights_;
+  VectorXd weights;
 
   ///* State dimension
-  int n_x_;
+  int n_x;
 
   ///* Augmented state dimension
-  int n_aug_;
+  int n_aug;
+
+  // dim of meas
+  int n_z;
 
   ///* Sigma point spreading parameter
-  double lambda_;
+  double lambda;
 
   ///* the current NIS for radar
   double NIS_radar_;
 
   ///* the current NIS for laser
   double NIS_laser_;
+
+  // measurement
+  VectorXd z;
+
+  // pred meas
+  VectorXd z_pred;
+  MatrixXd S;
+
+  // sensor noise
+  MatrixXd R;
+
+
 
   /**
    * Constructor
@@ -83,6 +98,14 @@ public:
    * Destructor
    */
   virtual ~UKF();
+
+  // My functions
+  MatrixXd GetSigmaX();
+  MatrixXd PredSigmaX(MatrixXd &Xsig_aug);
+  void PredX(MatrixXd &Xsig_pred);
+  MatrixXd PredSigmaZ(MatrixXd &Xsig_pred);
+  void PredZ(MatrixXd &Zsig);
+  void Update(MatrixXd &Xsig_pred, MatrixXd &Zsig);
 
   /**
    * ProcessMeasurement
