@@ -36,25 +36,25 @@ public:
   long long time_us_;
 
   ///* Process noise standard deviation longitudinal acceleration in m/s^2
-  double std_a_;
+  double std_a;
 
   ///* Process noise standard deviation yaw acceleration in rad/s^2
-  double std_yawdd_;
+  double std_yawdd;
 
   ///* Laser measurement noise standard deviation position1 in m
-  double std_laspx_;
+  double std_laspx;
 
   ///* Laser measurement noise standard deviation position2 in m
-  double std_laspy_;
+  double std_laspy;
 
   ///* Radar measurement noise standard deviation radius in m
-  double std_radr_;
+  double std_radr;
 
   ///* Radar measurement noise standard deviation angle in rad
-  double std_radphi_;
+  double std_radphi;
 
   ///* Radar measurement noise standard deviation radius change in m/s
-  double std_radrd_ ;
+  double std_radrd;
 
   ///* Weights of sigma points
   VectorXd weights;
@@ -87,6 +87,11 @@ public:
   // sensor noise
   MatrixXd R;
 
+  // time difference
+  double delta_t;
+
+  // previous time stamp
+  double previous_timestamp_;
 
 
   /**

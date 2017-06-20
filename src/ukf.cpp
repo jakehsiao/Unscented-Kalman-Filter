@@ -2,16 +2,22 @@
 #include "tools.h"
 #include "Eigen/Dense"
 #include <iostream>
+#include <cstdio>
 
 using namespace std;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
+
+
 /**
  * Initializes Unscented Kalman filter
  */
 UKF::UKF() {
+
+  is_initialized_ = false;
+
   // if this is false, laser measurements will be ignored (except during init)
   use_laser_ = true;
    
@@ -19,31 +25,31 @@ UKF::UKF() {
   use_radar_ = true;
 
   // initial state vector
-  x_ = VectorXd(7);
+  x_ = VectorXd(5);
 
   // initial covariance matrix
-  P_ = MatrixXd(7, 7);
+  P_ = MatrixXd(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 30;
+  std_a = 5;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 30;
+  std_yawdd = 0.3;
 
   // Laser measurement noise standard deviation position1 in m
-  std_laspx_ = 0.15;
+  std_laspx = 0.15;
 
   // Laser measurement noise standard deviation position2 in m
-  std_laspy_ = 0.15;
+  std_laspy = 0.15;
 
   // Radar measurement noise standard deviation radius in m
-  std_radr_ = 0.3;
+  std_radr = 0.3;
 
   // Radar measurement noise standard deviation angle in rad
-  std_radphi_ = 0.03;
+  std_radphi = 0.03;
 
   // Radar measurement noise standard deviation radius change in m/s
-  std_radrd_ = 0.3;
+  std_radrd = 0.3;
 
 
   /**
@@ -53,31 +59,45 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
-  n_aug = 7; // only aug is used this time
-  x_ << 0, 0, 0, 0, 0, 0, 0;
+  n_x = 5;
+  n_aug = 7;
+  x_ << 0, 0, 0, 0, 0;
 
-  P_.fill(1000);
-  P_(5,5) = std_a_ * std_a_;
-  P_(6,6) = std_yawdd * std_yawdd; 
+  P_ = MatrixXd::Identity(5,5);
 
   weights = VectorXd(2 * n_aug + 1);
+
+  lambda = 3 - n_aug;
 
 
 }
 
 UKF::~UKF() {}
 MatrixXd UKF::GetSigmaX(){
+  // init the noise factors of augmented X
+  VectorXd x_aug(7);
+  x_aug.head(5) = x_;
+  x_aug(5) = 0;
+  x_aug(6) = 0;
+
+  MatrixXd P_aug(7,7);
+  P_aug.setZero();
+  P_aug.topLeftCorner(5,5) = P_;
+  P_aug(5,5) = std_a * std_a;
+  P_aug(6,6) = std_yawdd * std_yawdd; 
+
+
   // get sigma points of x
   MatrixXd Xsig = MatrixXd(n_aug, 2 * n_aug + 1);
-  MatrixXd A = P_.llt().matrixL();
+  MatrixXd A = P_aug.llt().matrixL();
   //set first column of sigma point matrix
-  Xsig.col(0)  = x_;
+  Xsig.col(0)  = x_aug;
 
   //set remaining sigma points
   for (int i = 0; i < n_aug; i++)
   {
-    Xsig.col(i+1)     = x_ + sqrt(lambda+n_aug) * A.col(i);
-    Xsig.col(i+1+n_aug) = x_ - sqrt(lambda+n_aug) * A.col(i);
+    Xsig.col(i+1)     = x_aug + sqrt(lambda+n_aug) * A.col(i);
+    Xsig.col(i+1+n_aug) = x_aug - sqrt(lambda+n_aug) * A.col(i);
   }
 
   return Xsig;
@@ -87,7 +107,7 @@ MatrixXd UKF::GetSigmaX(){
 
 MatrixXd UKF::PredSigmaX(MatrixXd &Xsig_aug){
   //predict sigma points
-  MatrixXd Xsig_pred = MatrixXd(n_aug, 2 * n_aug + 1);
+  MatrixXd Xsig_pred = MatrixXd(n_x, 2 * n_aug + 1);
   for (int i = 0; i< 2*n_aug+1; i++)
   {
     //extract values for better readability
@@ -130,8 +150,6 @@ MatrixXd UKF::PredSigmaX(MatrixXd &Xsig_aug){
     Xsig_pred(2,i) = v_p;
     Xsig_pred(3,i) = yaw_p;
     Xsig_pred(4,i) = yawd_p;
-    Xsig_pred(5,i) = nu_a;
-    Xsig_pred(6,i) = nu_yawdd;
   }
 
   return Xsig_pred; 
@@ -172,17 +190,14 @@ void UKF::PredX(MatrixXd &Xsig_pred){
 
 MatrixXd UKF::PredSigmaZ(MatrixXd &Xsig_pred){
   // Get the measurement noise
+  R = MatrixXd(n_z, n_z);
   if (use_laser_){
-    n_z = 2;
-    R = MatrixXd(n_z, n_z);
-    R << std_laser_px_ * std_laser_px_, 0,
-         0, std_laser_py_ * std_laser_py_;
+    R << std_laspx * std_laspx, 0,
+         0, std_laspy * std_laspy;
 
   }
 
   else if(use_radar_){
-    n_z = 3;
-    R = MatrixXd(n_z,n_z);
     R <<    std_radr*std_radr, 0, 0,
             0, std_radphi*std_radphi, 0,
             0, 0,std_radrd*std_radrd;
@@ -190,7 +205,7 @@ MatrixXd UKF::PredSigmaZ(MatrixXd &Xsig_pred){
 
 
   //transform sigma points into measurement space
-  MatrixXd Zsig = MatrixXd(n_z, n_aug);
+  MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug + 1);
   
 
   for (int i = 0; i < 2 * n_aug + 1; i++) {  //2n+1 simga points
@@ -244,7 +259,7 @@ void UKF::PredZ(MatrixXd &Zsig){
   }
 
   //add measurement noise covariance matrix
-    S = S + R;
+  S = S + R;
 
   // get NIS
   VectorXd z_diff = z - z_pred;
@@ -259,7 +274,7 @@ void UKF::PredZ(MatrixXd &Zsig){
 
 void UKF::Update(MatrixXd &Xsig_pred, MatrixXd &Zsig){
     //calculate cross correlation matrix
-  MatrixXd Tc = MatrixXd(n_aug, n_z);
+  MatrixXd Tc = MatrixXd(n_x, n_z);
   Tc.fill(0.0);
   for (int i = 0; i < 2 * n_aug + 1; i++) {  //2n+1 simga points
 
@@ -312,13 +327,14 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
     use_radar_ = true;
     use_laser_ = false;
   }
-  else if (measurement_pack.sensor_type == MeasurementPackage::LASER){
+  else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER){
     use_radar_ = false;
     use_laser_ = true;
   }
 
 
 
+ // init
  if (!is_initialized_) {
 
     if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
@@ -331,21 +347,20 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
       float px = rho * cos(theta);
       float py = rho * sin(theta);
 
-      x_ << px, py, 0, 0, 0, 0, 0;
+      x_ << px, py, 0, 0, 0;
 
     }
     else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
       /**
       Initialize state.
       */
-      x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 0, 0, 0, 0, 0;
+      x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 0, 0, 0;
     }
 
 
     previous_timestamp_ = measurement_pack.timestamp_; 
     // done initializing, no need to predict or update
     is_initialized_ = true;
-    return;
   }
   
   // get delta t
@@ -354,20 +369,28 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
   
   // get measurements
   if (use_radar_){
-  z << rho, theta, measurement_pack.raw_measurements_[2];
+    float rho = measurement_pack.raw_measurements_[0];
+    float theta = measurement_pack.raw_measurements_[1];
+    float dtheta = measurement_pack.raw_measurements_[2];
+    n_z = 3;
+    z = VectorXd(3);
+    z << rho, theta, dtheta; 
   }
-  else if (use_lidar_){
-  z << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1];
+  else if (use_laser_){
+    n_z = 2;
+    z = VectorXd(2);
+    z << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1];
   }
 
   MatrixXd Xsig = GetSigmaX();
   MatrixXd Xsig_pred = PredSigmaX(Xsig);
   PredX(Xsig_pred);
   MatrixXd Zsig = PredSigmaZ(Xsig_pred);
-  PredZ();
+  PredZ(Zsig);
   Update(Xsig_pred, Zsig);
 
 }
+// NOTE: functions below are not used.
 
 /**
  * Predicts sigma points, the state, and the state covariance matrix.
