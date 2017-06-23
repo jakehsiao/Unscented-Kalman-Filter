@@ -31,10 +31,10 @@ UKF::UKF() {
   P_ = MatrixXd(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a = 5;
+  std_a = 1.5;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd = 0.3;
+  std_yawdd = 0.5;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx = 0.15;
@@ -68,6 +68,17 @@ UKF::UKF() {
   weights = VectorXd(2 * n_aug + 1);
 
   lambda = 3 - n_aug;
+  R_lidar = MatrixXd(2, 2);
+  R_radar = MatrixXd(3, 3);
+
+  R_lidar << std_laspx * std_laspx, 0,
+         0, std_laspy * std_laspy;
+
+
+  R_radar <<    std_radr*std_radr, 0, 0,
+            0, std_radphi*std_radphi, 0,
+            0, 0,std_radrd*std_radrd;
+
 
 
 }
@@ -190,17 +201,12 @@ void UKF::PredX(MatrixXd &Xsig_pred){
 
 MatrixXd UKF::PredSigmaZ(MatrixXd &Xsig_pred){
   // Get the measurement noise
-  R = MatrixXd(n_z, n_z);
   if (use_laser_){
-    R << std_laspx * std_laspx, 0,
-         0, std_laspy * std_laspy;
-
+    R = R_lidar;
   }
 
   else if(use_radar_){
-    R <<    std_radr*std_radr, 0, 0,
-            0, std_radphi*std_radphi, 0,
-            0, 0,std_radrd*std_radrd;
+    R = R_radar;
   }
 
 
@@ -218,6 +224,12 @@ MatrixXd UKF::PredSigmaZ(MatrixXd &Xsig_pred){
 
     double v1 = cos(yaw)*v;
     double v2 = sin(yaw)*v;
+
+    // prevent 0 division
+    if (sqrt(p_x * p_x + p_y * p_y) < 0.001){
+      p_x = 0.001;
+      p_y = 0.001;
+    }
 
     // measurement model
     if (use_radar_){
@@ -326,10 +338,12 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
   if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR){
     use_radar_ = true;
     use_laser_ = false;
+    n_z = 3;
   }
   else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER){
     use_radar_ = false;
     use_laser_ = true;
+    n_z = 2;
   }
 
 
@@ -343,18 +357,28 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
       */
       float rho = measurement_pack.raw_measurements_[0];
       float theta = measurement_pack.raw_measurements_[1];
-      
+      float rhodot = measurement_pack.raw_measurements_[2];
+
+      if (fabs(rho) <= 0.001){
+	rho = 0.001;
+      }
       float px = rho * cos(theta);
       float py = rho * sin(theta);
 
-      x_ << px, py, 0, 0, 0;
+      x_ << px, py, rhodot, 0, 0;
 
     }
     else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
       /**
       Initialize state.
       */
-      x_ << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1], 0, 0, 0;
+      float px = measurement_pack.raw_measurements_[0];
+      float py = measurement_pack.raw_measurements_[1];
+      if (fabs(px) <= 0.001 && fabs(py) <= 0.001){
+	    px = 0.001;
+	    py = 0.001;
+      }
+      x_ << px, py, 0, 0, 0;
     }
 
 
@@ -382,9 +406,19 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_pack) {
     z << measurement_pack.raw_measurements_[0], measurement_pack.raw_measurements_[1];
   }
 
+  float dt = delta_t; // init the dt to current deltat and then performance prediction smoothing
+  while (dt > 0.2){ 
+    delta_t = 0.1;
+    MatrixXd Xsig = GetSigmaX();
+    MatrixXd Xsig_pred = PredSigmaX(Xsig);
+    PredX(Xsig_pred);
+    dt -= delta_t;
+  }
+  delta_t = dt;
   MatrixXd Xsig = GetSigmaX();
   MatrixXd Xsig_pred = PredSigmaX(Xsig);
   PredX(Xsig_pred);
+
   MatrixXd Zsig = PredSigmaZ(Xsig_pred);
   PredZ(Zsig);
   Update(Xsig_pred, Zsig);

@@ -86,6 +86,8 @@ public:
 
   // sensor noise
   MatrixXd R;
+  MatrixXd R_lidar;
+  MatrixXd R_radar;
 
   // time difference
   double delta_t;
